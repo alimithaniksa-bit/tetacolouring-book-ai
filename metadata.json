@@ -1,0 +1,6 @@
+{
+  "name": "WonderColor: Children's Coloring Book Generator",
+  "description": "Create personalized 5-page printable children's coloring books with custom themed line art, custom covers, multi-resolution support, and a creative AI co-pilot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

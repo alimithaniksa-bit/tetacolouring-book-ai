@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Fredoka', 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #fbf9f5;
+    color: #1e293b;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.font-display {
+  font-family: 'Fredoka', cursive, sans-serif;
+}
+
+.font-hand {
+  font-family: 'Patrick Hand', cursive, sans-serif;
+}
+
+.font-body {
+  font-family: 'Quicksand', sans-serif;
+}
+
+/* Custom whimsical scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print specific formatting */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 10mm;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+}
+
+/* Subtle dotted grid paper background for the book canvas */
+.bg-grid-dots {
+  background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px);
+  background-size: 20px 20px;
+}
