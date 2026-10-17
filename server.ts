@@ -25,6 +25,9 @@ const ai = new GoogleGenAI({
   },
 });
 
+// Cache timestamp to prevent repeated 429 quota exhaustion errors
+let globalImageQuotaExhaustedUntil: number = 0;
+
 // Art Style guidelines for prompt engineering
 const STYLE_PROMPT_MODIFIERS: Record<string, string> = {
   'toddler-chunky': 'Extra thick 10px bold black solid outlines, huge simple friendly geometric shapes, zero small clutter, very large easy coloring areas, toddler cartoon coloring book style',
@@ -561,6 +564,19 @@ app.post('/api/generate-coloring-page', async (req, res) => {
       });
     }
 
+    // Cache quota exhaustion to avoid repeatedly hitting 429 limits
+    if (globalImageQuotaExhaustedUntil && Date.now() < globalImageQuotaExhaustedUntil) {
+      const svgUrl = generateThematicColoringSvg(title, theme, pageNumber, artStyle);
+      return res.json({
+        imageUrl: svgUrl,
+        model: 'vector-diverse-engine',
+        imageSize: chosenSize,
+        aspectRatio: chosenAspect,
+        pageNumber,
+        quotaExceeded: true,
+      });
+    }
+
     // Attempt generation with gemini-3-pro-image-preview
     try {
       const response = await ai.models.generateContent({
@@ -596,49 +612,58 @@ app.post('/api/generate-coloring-page', async (req, res) => {
           pageNumber,
         });
       }
-      throw new Error('No image part in gemini-3-pro-image-preview response.');
+      throw new Error('No image part in response.');
     } catch (imageModelErr: any) {
-      console.warn('Primary model error, attempting fallback to gemini-3.1-flash-lite-image:', imageModelErr.message);
+      const errMsg = imageModelErr?.message || '';
+      const is429 = errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota');
 
-      try {
-        const fallbackResponse = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite-image',
-          contents: {
-            parts: [{ text: refinedPrompt }],
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: chosenAspect,
-            },
-          },
-        });
-
-        let fallbackBase64 = '';
-        if (fallbackResponse.candidates && fallbackResponse.candidates[0]?.content?.parts) {
-          for (const part of fallbackResponse.candidates[0].content.parts) {
-            if (part.inlineData && part.inlineData.data) {
-              const mime = part.inlineData.mimeType || 'image/png';
-              fallbackBase64 = `data:${mime};base64,${part.inlineData.data}`;
-              break;
-            }
-          }
-        }
-
-        if (fallbackBase64) {
-          return res.json({
-            imageUrl: fallbackBase64,
-            model: 'gemini-3.1-flash-lite-image',
-            imageSize: chosenSize,
-            aspectRatio: chosenAspect,
-            fallbackUsed: true,
-            pageNumber,
-          });
-        }
-      } catch (fallbackErr: any) {
-        console.warn('Fallback model also encountered error:', fallbackErr.message);
+      if (is429) {
+        // Mark image quota exhausted for 15 minutes to prevent hammering API
+        globalImageQuotaExhaustedUntil = Date.now() + 15 * 60 * 1000;
       }
 
-      // If AI image models are unavailable, use our rich, distinct multi-scene vector line-art engine
+      // If not 429, try gemini-3.1-flash-lite-image
+      if (!is429) {
+        try {
+          const fallbackResponse = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-lite-image',
+            contents: {
+              parts: [{ text: refinedPrompt }],
+            },
+            config: {
+              imageConfig: {
+                aspectRatio: chosenAspect,
+              },
+            },
+          });
+
+          let fallbackBase64 = '';
+          if (fallbackResponse.candidates && fallbackResponse.candidates[0]?.content?.parts) {
+            for (const part of fallbackResponse.candidates[0].content.parts) {
+              if (part.inlineData && part.inlineData.data) {
+                const mime = part.inlineData.mimeType || 'image/png';
+                fallbackBase64 = `data:${mime};base64,${part.inlineData.data}`;
+                break;
+              }
+            }
+          }
+
+          if (fallbackBase64) {
+            return res.json({
+              imageUrl: fallbackBase64,
+              model: 'gemini-3.1-flash-lite-image',
+              imageSize: chosenSize,
+              aspectRatio: chosenAspect,
+              fallbackUsed: true,
+              pageNumber,
+            });
+          }
+        } catch {
+          // Gracefully continue to vector engine
+        }
+      }
+
+      // Use rich, distinct multi-scene vector line-art engine
       const svgUrl = generateThematicColoringSvg(title, theme, pageNumber, artStyle);
       return res.json({
         imageUrl: svgUrl,
@@ -646,7 +671,7 @@ app.post('/api/generate-coloring-page', async (req, res) => {
         imageSize: chosenSize,
         aspectRatio: chosenAspect,
         pageNumber,
-        note: 'Generated using WonderColor Multi-Scene Vector Line-Art Engine',
+        quotaExceeded: is429,
       });
     }
   } catch (error: any) {
